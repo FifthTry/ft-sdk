@@ -19,6 +19,28 @@ where
         Self: Sized;
 }
 
+pub trait Action2<L, E>
+where
+    E: std::fmt::Debug + From<ft_sdk::Error>,
+{
+    // Validate content in Action struct
+    fn validate(c: &mut L, start_time: chrono::DateTime<chrono::Utc>) -> Result<Self, E>
+    where
+        Self: Sized;
+    // action_ wrapper for logging
+    fn action(
+        &self,
+        c: &mut L,
+        start_time: chrono::DateTime<chrono::Utc>,
+    ) -> Result<ActionOutput, E>
+    where
+        Self: Sized;
+    // actual action logic
+    fn action_(&self, c: &mut L, start_time: chrono::DateTime<chrono::Utc>) -> Result<i64, E>
+    where
+        Self: Sized;
+}
+
 #[derive(Debug)]
 pub enum ActionOutput {
     Reload,
@@ -86,6 +108,33 @@ pub trait Layout {
         let a = A::validate(&mut l)?;
         let o = a.action(&mut l)?;
         Ok(a2r(o))
+    }
+
+    fn action2<A>(r: http::Request<bytes::Bytes>) -> http::Response<bytes::Bytes>
+    where
+        A: Action2<Self, Self::Error>,
+        Self: Sized,
+    {
+        match Self::_action2::<A>(r) {
+            Ok(r) => r,
+            Err(e) => Self::render_error(e),
+        }
+    }
+
+    fn _action2<A>(
+        r: http::Request<bytes::Bytes>,
+    ) -> Result<http::Response<bytes::Bytes>, Self::Error>
+    where
+        A: Action2<Self, Self::Error>,
+        Self: Sized,
+    {
+        let start_time = ft_sys::now();
+        let in_ = ft_sdk::In::from_request(r)?;
+        let mut l = Self::from_in(in_, RequestType::Action)?;
+        let a = A::validate(&mut l, start_time)?;
+        let o = a.action(&mut l, start_time)?;
+        let r = a2r(o);
+        Ok(r)
     }
 
     fn json(&mut self, o: serde_json::Value) -> Result<serde_json::Value, Self::Error>;
